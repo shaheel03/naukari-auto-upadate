@@ -10,67 +10,61 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 def update_naukri():
     chrome_options = Options()
-    chrome_options.add_argument("--headless")
+    
+    # --- IMPORTANT: LOGIN BYPASS LOGIC ---
+    # Apne Chrome Profile ka path yahan paste karein
+    # Note: 'Default' folder ke upar wala path dena hai
+    profile_path = r'C:\Users\dell\AppData\Local\Google\Chrome\User Data\Default' 
+    chrome_options.add_argument(f"user-data-dir={profile_path}")
+    chrome_options.add_argument("profile-directory=Default") # Ya jo bhi apka profile name hai
+
+    # Headless mode hata diya hai taaki aap dekh sakein login ho raha hai ya nahi
+    # Ek baar chal jaye toh wapis enable kar sakte hain
+    # chrome_options.add_argument("--headless") 
+    
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
     
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     wait = WebDriverWait(driver, 20) 
     
-    EMAIL = os.getenv('EMAIL')
-    PASSWORD = os.getenv('PASSWORD')
-    RESUME_PATH = os.path.join(os.getcwd(), "Resume.pdf")
+    RESUME_PATH = os.path.abspath("Resume.pdf") # Ensure absolute path
 
     try:
-        # Step 1: Login
-        print("Step 1: Opening Login Page...")
-        driver.get("https://www.naukri.com/nlogin/login")
-        wait.until(EC.presence_of_element_located((By.ID, "usernameField"))).send_keys(EMAIL)
-        driver.find_element(By.ID, "passwordField").send_keys(PASSWORD)
-        driver.find_element(By.XPATH, "//button[text()='Login']").click()
-        print("Step 2: Login submitted...")
-        time.sleep(10)
-        
-        # Step 3: Direct Profile Page
-        print("Step 3: Opening Profile...")
+        # Step 1: Direct Profile Page par jayein
+        # Agar profile session active hai, toh ye seedha login kar dega
+        print("Step 1: Opening Profile Page directly...")
         driver.get("https://www.naukri.com/mnjuser/profile")
-        time.sleep(10)
+        time.sleep(5)
 
-        # Step 4: Resume Upload (Multiple Methods)
-        print("Step 4: Attempting Upload...")
+        # Check karein agar login page khul gaya hai (Session expire hone par)
+        if "login" in driver.current_url:
+            print("Session expired! Please login manually once in this window.")
+            # Yahan script wait karegi taaki aap manually login karke OTP daal sakein
+            # Agli baar se ye nahi mangega
+            time.sleep(60) 
         
-        # Method 1: Target via ID
-        # Method 2: Target via XPATH (type='file')
-        # Method 3: Target via Class
-        upload_locators = [
-            (By.ID, "attachCV"),
-            (By.XPATH, "//input[@type='file']"),
-            (By.XPATH, "//input[contains(@class, 'fileInput')]")
-        ]
+        # Step 2: Resume Upload
+        print("Step 2: Attempting Upload...")
+        
+        # Naukri ka hidden file input select karein
+        upload_xpath = "//input[@type='file' and @id='attachCV']"
+        
+        try:
+            resume_input = wait.until(EC.presence_of_element_located((By.XPATH, upload_xpath)))
+            resume_input.send_keys(RESUME_PATH)
+            print("✅ File sent to browser...")
+        except Exception as e:
+            print(f"Direct ID method failed, trying alternative... {e}")
+            resume_input = driver.find_element(By.XPATH, "//input[@type='file']")
+            resume_input.send_keys(RESUME_PATH)
 
-        uploaded = False
-        for locator in upload_locators:
-            try:
-                print(f"Trying locator: {locator}")
-                element = driver.find_element(*locator)
-                element.send_keys(RESUME_PATH)
-                uploaded = True
-                print("✅ Found element and sent file!")
-                break
-            except:
-                continue
-
-        if not uploaded:
-            raise Exception("Saare upload methods fail ho gaye. Input field nahi mila.")
-
-        print("Waiting for upload to finish...")
-        time.sleep(15) 
+        print("Waiting for upload confirmation...")
+        time.sleep(10) 
         print("🎉 SUCCESS: Resume updated successfully!")
         
     except Exception as e:
-        driver.save_screenshot("error.png")
+        driver.save_screenshot("error_debug.png")
         print(f"❌ FAILED: {str(e)}")
     
     finally:
